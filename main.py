@@ -68,7 +68,7 @@ if __name__ == "__main__":
     config.local = False
     
     # load dataset
-    train_dataset_EF,test_dataset,num_classes,num_training_samples, num_testing_samples = input_dataset(config.dataset,'clean', config.noise_rate, transform=False)
+    train_dataset_EF,test_dataset,num_classes,num_training_samples, num_testing_samples = input_dataset(config.dataset,'clean', config.noise_rate, transform=False) # will load noise file later (in get_T_HOC)
     config.num_classes = num_classes
     config.num_training_samples = num_training_samples
     config.num_testing_samples = num_testing_samples
@@ -114,7 +114,7 @@ if __name__ == "__main__":
         step_sz_EM = 30
         alpha_plan = [0.1]*step_sz_EM + [0.01]*step_sz_EM + [0.1]*step_sz_EM + [0.01]*step_sz_EM + [0.1]*step_sz_EM + [0.01]*step_sz_EM + [0.001]*step_sz_EM
     criterion = torch.nn.CrossEntropyLoss()
-    print(f'The true T is {np.round(config.T,3)}')
+    # print(f'The true T is {np.round(config.T,3)}')
     # the following code is testing the performance of 512-dim feature
 
     record_t_loss = [[] for _ in range(2)]
