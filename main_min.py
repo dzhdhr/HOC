@@ -12,21 +12,19 @@ import argparse
 import numpy as np
 import pickle
 
-
-
 # Options ----------------------------------------------------------------------
 parser = argparse.ArgumentParser()
 parser.add_argument("--pre_type", type=str, default='cifar')  # image, cifar
-parser.add_argument('--noise_rate', type = float, help = 'corruption rate, should be less than 1', default = 0.2)
-parser.add_argument('--noise_type', type = str, default='manual')#manual
-parser.add_argument('--dataset', type = str, help = 'cifar10, cifar100', default = 'cifar10')
+parser.add_argument('--noise_rate', type=float, help='corruption rate, should be less than 1', default=0.2)
+parser.add_argument('--noise_type', type=str, default='manual')  # manual
+parser.add_argument('--dataset', type=str, help='cifar10, cifar100', default='cifar10')
 parser.add_argument('--seed', type=int, default=1, metavar='S', help='random seed (default: 1)')
 parser.add_argument('--G', type=int, default=50, help='num of rounds (parameter G in Algorithm 1)')
 parser.add_argument('--max_iter', type=int, default=1500, help='num of iterations to get a T')
 parser.add_argument("--local", default=False, action='store_true')
-parser.add_argument('--loss', type = str, help = 'ce, fw', default = 'fw')
-parser.add_argument('--label_file_path', type = str, help = 'the path of noisy labels', default = './data/noise_label_human.pt') 
-
+parser.add_argument('--loss', type=str, help='ce, fw', default='fw')
+parser.add_argument('--label_file_path', type=str, help='the path of noisy labels',
+                    default='./data/noise_label_human.pt')
 
 
 def set_model_min(config):
@@ -43,7 +41,7 @@ def set_model_min(config):
     return model
 
 
-def get_T_global_min(args, record, max_step = 501, T0 = None, p0 = None, lr = 0.1, NumTest = 50, all_point_cnt = 15000):
+def get_T_global_min(args, record, max_step=501, T0=None, p0=None, lr=0.1, NumTest=50, all_point_cnt=15000):
     total_len = sum([len(a) for a in record])
     origin_trans = torch.zeros(total_len, record[0][0]['feature'].shape[0])
     origin_label = torch.zeros(total_len).long()
@@ -60,7 +58,6 @@ def get_T_global_min(args, record, max_step = 501, T0 = None, p0 = None, lr = 0.
     KINDS = args.num_classes
     # NumTest = 50
     # all_point_cnt = 15000
-
 
     p_estimate = [[] for _ in range(3)]
     p_estimate[0] = torch.zeros(KINDS)
@@ -82,42 +79,46 @@ def get_T_global_min(args, record, max_step = 501, T0 = None, p0 = None, lr = 0.
     for j in range(3):
         p_estimate[j] = p_estimate[j] / NumTest
 
-    args.device = set_device()
-    loss_min, E_calc, P_calc, T_init = calc_func(KINDS, p_estimate, False, args.device, max_step, T0, p0, lr = lr)
+    args.device = "mps"
+    loss_min, E_calc, P_calc, T_init = calc_func(KINDS, p_estimate, False, args.device, max_step, T0, p0, lr=lr)
 
     E_calc = E_calc.cpu().numpy()
     T_init = T_init.cpu().numpy()
     return E_calc, T_init
 
+
 def error(T, T_true):
-    error = np.sum(np.abs(T-T_true)) / np.sum(np.abs(T_true))
+    error = np.sum(np.abs(T - T_true)) / np.sum(np.abs(T_true))
     return error
+
 
 if __name__ == "__main__":
 
     # Setup ------------------------------------------------------------------------
 
     config = parser.parse_args()
-    config.device = set_device()
+    config.device = "mps"
     torch.manual_seed(config.seed)
     np.random.seed(config.seed)
     random.seed(config.seed)
 
-    
     # load dataset
-    train_dataset,test_dataset,num_classes,num_training_samples, num_testing_samples = input_dataset(config.dataset,config.noise_type,config.noise_rate, transform=False, noise_file = config.label_file_path)
+    train_dataset, test_dataset, num_classes, num_training_samples, num_testing_samples = input_dataset(config.dataset,
+                                                                                                        config.noise_type,
+                                                                                                        config.noise_rate,
+                                                                                                        transform=False,
+                                                                                                        noise_file=config.label_file_path)
     config.num_classes = num_classes
     config.num_training_samples = num_training_samples
     config.num_testing_samples = num_testing_samples
 
     model_pre = set_model_min(config)
 
-
     train_dataloader_EF = torch.utils.data.DataLoader(train_dataset,
-                                                    batch_size=128,
-                                                    shuffle=True,
-                                                    num_workers=2,
-                                                    drop_last=False)
+                                                      batch_size=128,
+                                                      shuffle=True,
+                                                      num_workers=2,
+                                                      drop_last=False)
     model_pre.eval()
     record = [[] for _ in range(config.num_classes)]
 
@@ -129,14 +130,12 @@ if __name__ == "__main__":
             record[label[i]].append({'feature': extracted_feature[i].detach().cpu(), 'index': index[i]})
 
     # minimal implementation of HOC (an example)
-    new_estimate_T, _ = get_T_global_min(config, record, max_step=config.max_iter, lr = 0.1, NumTest = config.G)
+    new_estimate_T, _ = get_T_global_min(config, record, max_step=config.max_iter, lr=0.1, NumTest=config.G)
     print(f'\n\n-----------------------------------------')
     print(f'Estimation finished!')
-    
+
     np.set_printoptions(precision=1)
-    print(f'The estimated T (*100) is \n{new_estimate_T*100}')
+    print(f'The estimated T (*100) is \n{new_estimate_T * 100}')
     # The following code can print the error (matrix L11 norm) when the true T is given
     # estimate_error_2 = error(True_T, new_estimate_T)
     # print('---------New Estimate error: {:.6f}'.format(estimate_error_2))
-
-
