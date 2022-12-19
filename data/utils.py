@@ -142,7 +142,7 @@ def noisify_pairflip(y_train, noise, random_state=None, nb_classes=10):
         y_train_noisy = multiclass_noisify(y_train, P=P,
                                            random_state=random_state)
         for i in range(len(y_train_noisy)):
-            T[y_train[i][0]][y_train_noisy[i][0]]+=1;
+            T[y_train[i][0]][y_train_noisy[i][0]] += 1;
 
         T = T / np.sum(T, axis=1)
         print(T)
@@ -153,7 +153,7 @@ def noisify_pairflip(y_train, noise, random_state=None, nb_classes=10):
         y_train = y_train_noisy
     # print P
 
-    return y_train, actual_noise,T
+    return y_train, actual_noise, T
 
 
 def noisify_multiclass_symmetric(y_train, noise, random_state=None, nb_classes=10):
@@ -185,10 +185,63 @@ def noisify_multiclass_symmetric(y_train, noise, random_state=None, nb_classes=1
         y_train = y_train_noisy
     # print P
 
-    return y_train, actual_noise,T
+    return y_train, actual_noise, T
 
+
+def multi_matrix_noisify(dataset='mnist',train_data=None, nb_classes=10, train_labels=None, noise_type=None, noise_rate=None, random_state=0, distribution=None):
+    if(noise_type!='instance'):
+        train_noisy_labels = np.empty((0, 1),dtype=int)
+    else:
+        train_noisy_labels = []
+    actual_noise_rate = []
+    T = []
+    start = 0
+    if noise_type=='pairflip':
+        for i,elem in enumerate(distribution):
+            cur_size = int(train_labels.shape[0] * elem)
+            cur_label = train_labels[start:start + cur_size]
+            print(f'from {start} to {start + cur_size}',end='\t')
+            start += cur_size
+            print(f'shape:{train_noisy_labels.shape}')
+            cur_noise_label, cur_noise_rate, cur_T = noisify_pairflip(cur_label,noise_rate[i],random_state,nb_classes=nb_classes)
+
+            train_noisy_labels = np.concatenate([train_noisy_labels, cur_noise_label],axis=0)
+            actual_noise_rate.append(cur_noise_rate)
+            T.append(cur_T)
+
+    elif noise_type == 'symmetric':
+        for i, elem in enumerate(distribution):
+            cur_size = int(train_labels.shape[0] * elem)
+            cur_label = train_labels[start:start + cur_size]
+            print(f'from {start} to {start + cur_size}',end='\t')
+            start += cur_size
+            print(f'shape:{train_noisy_labels.shape}')
+            cur_noise_label, cur_noise_rate, cur_T = noisify_multiclass_symmetric(cur_label, noise_rate[i], random_state,
+                                                                      nb_classes=nb_classes)
+            train_noisy_labels = np.concatenate([train_noisy_labels, cur_noise_label], axis=0)
+            actual_noise_rate.append(cur_noise_rate)
+            T.append(cur_T)
+
+    elif noise_type=='instance':
+        for i,elem in enumerate(distribution):
+            cur_size = int(len(train_labels) * elem)
+            cur_label = train_labels[start:start + cur_size]
+            cur_data = train_data[start:start+cur_size]
+
+            print(f'from {start} to {start + cur_size} shape:{len(cur_label)}', end='\t')
+            start+=cur_size
+
+            cur_noise_label, cur_noise_rate, cur_T = noisify_instance(cur_data, cur_label, noise_rate[i])
+            # train_noisy_labels = np.concatenate([train_noisy_labels, cur_noise_label], axis=0)
+            train_noisy_labels+=cur_noise_label
+            actual_noise_rate.append(cur_noise_rate)
+            T.append(cur_T)
+        print(len(train_noisy_labels))
+
+    return train_noisy_labels, actual_noise_rate, T
 
 def noisify(dataset='mnist', nb_classes=10, train_labels=None, noise_type=None, noise_rate=0, random_state=0):
+
     if noise_type == 'pairflip':
         train_noisy_labels, actual_noise_rate,T = noisify_pairflip(train_labels, noise_rate, random_state=0,
                                                                  nb_classes=nb_classes)
@@ -198,13 +251,45 @@ def noisify(dataset='mnist', nb_classes=10, train_labels=None, noise_type=None, 
     return train_noisy_labels, actual_noise_rate,T
 
 
+def noisify_mulit_class(distribution, distribution_number, nb_classes=10, train_labels=None, noise_type=None,
+                        noise_rate=0):
+    train_noisy_labels = np.zeros(train_labels.shape)
+
+    # for i in range(distribution):
+
+    if noise_type == 'pairflip':
+        train_noisy_labels, actual_noise_rate, T = noisify_pairflip(train_labels, noise_rate, random_state=0,
+                                                                    nb_classes=nb_classes)
+    if noise_type == 'symmetric':
+        train_noisy_labels, actual_noise_rate, T = noisify_multiclass_symmetric(train_labels, noise_rate,
+                                                                                random_state=0,
+                                                                                nb_classes=nb_classes)
+    return train_noisy_labels, actual_noise_rate, T
+
+
+def get_distribution(data_size, distribution=None):
+    if distribution is None:
+        distribution = [1.0]
+    ret = np.array([])
+    for i, elem in enumerate(distribution):
+
+        size = int(elem * data_size)
+        print(f'{size}in matrix {i}')
+        temp = np.full(size, i)
+        ret = np.concatenate((ret, temp))
+    np.random.shuffle(ret)
+    print(ret.shape)
+    return ret
+
+
 def noisify_instance(train_data, train_labels, noise_rate):
     if max(train_labels) > 10:
         num_class = 100
     else:
         num_class = 10
     np.random.seed(0)
-
+    print(type(train_labels))
+    print(type(train_data))
     q_ = np.random.normal(loc=noise_rate, scale=0.1, size=1000000)
     q = []
     for pro in q_:
@@ -227,8 +312,7 @@ def noisify_instance(train_data, train_labels, noise_rate):
         p_all[train_labels[i]] = 1 - q[i]
         noisy_labels.append(np.random.choice(np.arange(num_class), p=p_all / sum(p_all)))
         T[train_labels[i]][noisy_labels[i]] += 1
-    over_all_noise_rate = 1 - float(torch.tensor(train_labels).eq(torch.tensor(noisy_labels)).sum()) / 50000
+    over_all_noise_rate = 1 - float(torch.tensor(train_labels).eq(torch.tensor(noisy_labels)).sum()) / len(train_labels)
     T = T / np.sum(T, axis=1)
     print(np.round(T * 100, 1))
-    return noisy_labels, over_all_noise_rate,T
-
+    return noisy_labels, over_all_noise_rate, T

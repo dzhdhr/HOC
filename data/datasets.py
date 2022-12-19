@@ -5,6 +5,8 @@ from torchvision import datasets
 import torch
 import random
 
+from .cifar_mulmatrix import CIFAR10_multi
+
 train_cifar10_transform = transforms.Compose([
     transforms.RandomCrop(32, padding=4),
     transforms.RandomHorizontalFlip(),
@@ -29,7 +31,7 @@ test_cifar100_transform = transforms.Compose([
 ])
 
 
-def input_dataset(dataset, noise_type, noise_ratio, transform=True, noise_file=None):
+def input_dataset(dataset, noise_type, noise_ratio, transform=True, noise_file=None,distribution = None):
     if dataset == 'cifar10':
         train_dataset = CIFAR10(root='./data/',
                                 download=True,
@@ -49,8 +51,33 @@ def input_dataset(dataset, noise_type, noise_ratio, transform=True, noise_file=N
         num_classes = 10
         num_training_samples = 50000
         num_testing_samples = 10000
-        T = train_dataset.T
 
+        # train_dataset.T
+        T = train_dataset.T
+    elif dataset == 'cifar10_multi':
+        train_dataset = CIFAR10_multi(root='./data/',
+                                download=True,
+                                train=True,
+                                transform=train_cifar10_transform if transform else test_cifar10_transform,
+                                noise_type=noise_type,
+                                noise_rate=noise_ratio,
+                                noise_file=noise_file,
+                                distribution = distribution
+                                )
+        test_dataset = CIFAR10_multi(root='./data/',
+                               download=True,
+                               train=False,
+                               transform=test_cifar10_transform,
+                               noise_type=noise_type,
+                               noise_rate=noise_ratio,
+                               distribution=distribution
+                               )
+        num_classes = 10
+        num_training_samples = 50000
+        num_testing_samples = 10000
+
+        # train_dataset.T
+        T = train_dataset.T
     elif dataset == 'cifar100':
         train_dataset = CIFAR100(root='./data/',
                                  download=True,

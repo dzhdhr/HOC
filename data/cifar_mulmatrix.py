@@ -13,10 +13,10 @@ else:
     import pickle
 import torch
 import torch.utils.data as data
-from .utils import download_url, check_integrity, noisify, noisify_instance, multiclass_noisify
+from .utils import download_url, check_integrity, noisify, noisify_instance, multiclass_noisify,multi_matrix_noisify
 
 
-class CIFAR10(data.Dataset):
+class CIFAR10_multi(data.Dataset):
     """`CIFAR10 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.
     Args:
         root (string): Root directory of dataset where directory
@@ -50,7 +50,12 @@ class CIFAR10(data.Dataset):
     def __init__(self, root, train=True,
                  transform=None, target_transform=None,
                  download=False,
-                 noise_type=None, noise_rate=0.2, random_state=0, noise_file=None, synthetic=False):
+                 noise_type=None, noise_rate=None, random_state=0, noise_file=None, synthetic=False, distribution=None):
+
+        if noise_rate == None:
+            noise_rate = [0.2]
+        if distribution == None:
+            distribution = [1.0]
         self.root = os.path.expanduser(root)
         self.transform = transform
         self.target_transform = target_transform
@@ -59,6 +64,7 @@ class CIFAR10(data.Dataset):
         self.noise_type = noise_type
         self.nb_classes = 10
         self.noise_file = noise_file
+
         idx_each_class_noisy = [[] for i in range(10)]
         if download:
             self.download()
@@ -71,6 +77,7 @@ class CIFAR10(data.Dataset):
 
         # now load the picked numpy arrays
         if self.train:
+            self.distribution = distribution
             self.train_data = []
             self.train_labels = []
             for fentry in self.train_list:
@@ -96,39 +103,41 @@ class CIFAR10(data.Dataset):
             # if noise_type is not None:
             if noise_type != 'clean':
                 # noisify train data
-                if noise_type in ['symmetric', 'pairflip']:
-                    self.train_labels = np.asarray([[self.train_labels[i]] for i in range(len(self.train_labels))])
-                    self.train_noisy_labels, self.actual_noise_rate,self.T = noisify(dataset=self.dataset,
-                                                                              train_labels=self.train_labels,
-                                                                              noise_type=noise_type,
-                                                                              noise_rate=noise_rate,
-                                                                              random_state=random_state,
-                                                                              nb_classes=self.nb_classes)
+                if noise_type in ['symmetric', 'pairflip', 'instance']:
+                    if noise_type != 'instance':
+                        self.train_labels = np.asarray([[self.train_labels[i]] for i in range(len(self.train_labels))])
+                    self.train_noisy_labels, self.actual_noise_rate, self.T = multi_matrix_noisify(
+                        train_data=self.train_data,
+                        train_labels=self.train_labels,
+                        noise_type=noise_type,
+                        noise_rate=noise_rate,
+                        random_state=random_state,
+                        nb_classes=self.nb_classes,
+                        distribution=self.distribution)
+                    # print(self.train_noisy_labels)
+                    if noise_type!='instance':
+                        self.train_noisy_labels = [i[0] for i in self.train_noisy_labels]
+                        # print(self.train_noisy_labels)
+                        _train_labels = [i[0] for i in self.train_labels]
+                        for i in range(len(_train_labels)):
+                            idx_each_class_noisy[self.train_noisy_labels[i]].append(i)
+                        class_size_noisy = [len(idx_each_class_noisy[i]) for i in range(10)]
+                        self.noise_prior = np.array(class_size_noisy) / sum(class_size_noisy)
+                        print(f'The noisy data ratio in each class is {self.noise_prior}')
+                        self.noise_or_not = np.transpose(self.train_noisy_labels) != np.transpose(_train_labels)
 
-                    self.train_noisy_labels = [i[0] for i in self.train_noisy_labels]
+                    else:
+                        print('over all noise rate is ', self.actual_noise_rate)
+                        # self.train_noisy_labels=[i[0] for i in self.train_noisy_labels]
+                        # self.train_noisy_labels=[i[0] for i in self.train_noisy_labels]
+                        # _train_labels=[i[0] for i in self.train_labels]
+                        for i in range(len(self.train_labels)):
+                            idx_each_class_noisy[self.train_noisy_labels[i]].append(i)
+                        class_size_noisy = [len(idx_each_class_noisy[i]) for i in range(10)]
+                        self.noise_prior = np.array(class_size_noisy) / sum(class_size_noisy)
+                        print(f'The noisy data ratio in each class is {self.noise_prior}')
+                        self.noise_or_not = np.transpose(self.train_noisy_labels) != np.transpose(self.train_labels)
 
-                    _train_labels = [i[0] for i in self.train_labels]
-                    for i in range(len(_train_labels)):
-                        idx_each_class_noisy[self.train_noisy_labels[i]].append(i)
-                    class_size_noisy = [len(idx_each_class_noisy[i]) for i in range(10)]
-                    self.noise_prior = np.array(class_size_noisy) / sum(class_size_noisy)
-                    print(f'The noisy data ratio in each class is {self.noise_prior}')
-                    self.noise_or_not = np.transpose(self.train_noisy_labels) != np.transpose(_train_labels)
-                elif noise_type == 'instance':
-                    self.train_noisy_labels, self.actual_noise_rate,self.T = noisify_instance(self.train_data,
-                                                                                       self.train_labels,
-                                                                                       noise_rate=noise_rate)
-
-                    print('over all noise rate is ', self.actual_noise_rate)
-                    # self.train_noisy_labels=[i[0] for i in self.train_noisy_labels]
-                    # self.train_noisy_labels=[i[0] for i in self.train_noisy_labels]
-                    # _train_labels=[i[0] for i in self.train_labels]
-                    for i in range(len(self.train_labels)):
-                        idx_each_class_noisy[self.train_noisy_labels[i]].append(i)
-                    class_size_noisy = [len(idx_each_class_noisy[i]) for i in range(10)]
-                    self.noise_prior = np.array(class_size_noisy) / sum(class_size_noisy)
-                    print(f'The noisy data ratio in each class is {self.noise_prior}')
-                    self.noise_or_not = np.transpose(self.train_noisy_labels) != np.transpose(self.train_labels)
                 elif noise_type == 'manual':  # manual noise
                     # load noise label
                     train_noisy_labels = self.load_label()
@@ -248,11 +257,11 @@ class CIFAR10(data.Dataset):
                 assert torch.sum(
                     torch.tensor(self.train_labels)[noise_label['raw_index']] != noise_label['clean_label']) == 0
                 noise_level = torch.sum(noise_label['clean_label'] == noise_label['noisy_label']) * 1.0 / (
-                noise_label['clean_label'].shape[0])
+                    noise_label['clean_label'].shape[0])
                 print(f'the overall noise level is {noise_level}')
                 self.train_data = self.train_data[noise_label['raw_index']]
             return noise_label['noise_label_train'].view(-1).long() if 'noise_label_train' in noise_label.keys() else \
-            noise_label['noisy_label'].view(-1).long()  # % 10
+                noise_label['noisy_label'].view(-1).long()  # % 10
 
         else:
             return noise_label.view(-1).long()
@@ -457,22 +466,12 @@ class CIFAR100(data.Dataset):
             self.train_data = np.concatenate(self.train_data)
             self.train_data = self.train_data.reshape((50000, 3, 32, 32))
             self.train_data = self.train_data.transpose((0, 2, 3, 1))  # convert to HWC
-            # if noise_type is not None:
-            #     # noisify train data
-            #     self.train_labels=np.asarray([[self.train_labels[i]] for i in range(len(self.train_labels))])
-            #     self.train_noisy_labels, self.actual_noise_rate = noisify(dataset=self.dataset, train_labels=self.train_labels, noise_type=noise_type, noise_rate=noise_rate, random_state=random_state, nb_classes=self.nb_classes)
-            #     self.train_noisy_labels=[i[0] for i in self.train_noisy_labels]
-            #     _train_labels=[i[0] for i in self.train_labels]
-            #     for i in range(len(_train_labels)):
-            #         idx_each_class_noisy[self.train_noisy_labels[i]].append(i)
-            #     class_size_noisy = [len(idx_each_class_noisy[i]) for i in range(100)]
-            #     self.noise_prior = np.array(class_size_noisy)/sum(class_size_noisy)
-            #     print(f'The noisy data ratio in each class is {self.noise_prior}')
-            #     self.noise_or_not = np.transpose(self.train_noisy_labels)!=np.transpose(_train_labels)
             if noise_type != 'clean':
                 # noisify train data
                 if noise_type in ['symmetric', 'pairflip']:
                     self.train_labels = np.asarray([[self.train_labels[i]] for i in range(len(self.train_labels))])
+                    self.distribution = np.zeros((len(self.train_labels)))
+                    ##print(di)
                     self.train_noisy_labels, self.actual_noise_rate = noisify(dataset=self.dataset,
                                                                               train_labels=self.train_labels,
                                                                               noise_type=noise_type,
